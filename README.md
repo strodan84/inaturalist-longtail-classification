@@ -31,11 +31,27 @@ This repository provides a modular, production-minded PyTorch framework for fine
 
 ---
 
-## 🚀 Quickstart
+## 🚀 Quickstart to Run in 5 Steps
 
 ### Prerequisites
 
+1. Clone repository locally:
 ```bash
 git clone [https://github.com/your-username/inaturalist-longtail-vision.git](https://github.com/your-username/inaturalist-longtail-vision.git)
+```
+2. Move into new local cloned directory:
+```bash
 cd inaturalist-longtail-vision
+```
+3. Install dependencies:
+```bash
 pip install -r requirements.txt
+```
+4. Run training:
+```bash
+python train.py --model-name convnext_small --epochs 5 --batch-size 32
+```
+5. Export model to ONNX for production edge execution:
+```bash
+python export.py --model-name convnext_small --checkpoint ./models/convnext_small_best.pt --output ./models/convnext_small.onnx
+```
