@@ -1,4 +1,6 @@
 from typing import Tuple, List
+import platform
+import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms
 from torchvision.datasets import INaturalist
@@ -8,7 +10,6 @@ def get_dataloaders(
     data_dir: str = "./data", 
     batch_size: int = 32, 
     img_size: int = 224,
-    num_workers: int = 4
 ) -> Tuple[DataLoader, DataLoader, List[int]]:
     """
     Downloads and configures iNaturalist 2021 DataLoaders.
@@ -40,24 +41,28 @@ def get_dataloaders(
         download=True
     )
 
+    # Automatically set zero worker processes on Windows to prevent CPU freeze
+    num_workers = 0 if platform.system() == "Windows" else 2
+    is_cuda = torch.cuda.is_available()
+
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
         shuffle=True, 
         num_workers=num_workers, 
-        pin_memory=True
+        pin_memory=is_cuda
     )
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
         shuffle=False, 
         num_workers=num_workers, 
-        pin_memory=True
+        pin_memory=is_cuda
     )
 
-    # Compute per-class instance counts for Seesaw Loss
-    cls_num_list = [0] * len(train_dataset.categories)
-    for _, target in train_dataset.index:
-        cls_num_list[target] += 1
+    # Compute per-class sample frequencies
+    cls_num_list = [0] * len(train_dataset.all_categories)
+    for target_id, _ in train_dataset.index:
+        cls_num_list[target_id] += 1
 
     return train_loader, val_loader, cls_num_list
