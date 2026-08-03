@@ -37,11 +37,11 @@ This repository provides a modular, production-minded PyTorch framework for fine
 
 1. Clone repository locally:
 ```bash
-git clone [https://github.com/your-username/inaturalist-longtail-vision.git](https://github.com/strodan84/inaturalist-longtail-vision.git)
+git clone [https://github.com/your-username/inaturalist-longtail-vision.git](https://github.com/strodan84/inaturalist-longtail-classification.git)
 ```
 2. Move into new local cloned directory:
 ```bash
-cd inaturalist-longtail-vision
+cd inaturalist-longtail-classification
 ```
 3. Install dependencies:
 ```bash
