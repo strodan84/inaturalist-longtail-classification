@@ -30,13 +30,14 @@ def get_dataloaders(
 
     train_dataset = INaturalist(
         root=data_dir, 
-        version="2021_train_mini", 
+        version="2017",  # Switched from 2021_train_mini to 2017
         transform=train_transform, 
         download=True
     )
+        
     val_dataset = INaturalist(
         root=data_dir, 
-        version="2021_valid", 
+        version="2017", 
         transform=val_transform, 
         download=True
     )
