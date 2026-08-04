@@ -51,13 +51,19 @@ def main():
 
     # 4. Training Loop
     best_loss = float("inf")
+    # In train.py, set max steps per epoch for streamed batches (e.g., 500 batches per epoch)
+    max_steps_per_epoch = 500
     
     for epoch in range(args.epochs):
         model.train()
         running_loss = 0.0
-        pbar = tqdm(train_loader, desc=f"Epoch [{epoch+1}/{args.epochs}]")
-
-        for images, targets in pbar:
+        
+        pbar = tqdm(train_loader, total=max_steps_per_epoch, desc=f"Epoch [{epoch+1}/{args.epochs}]")
+        
+        for step, (images, targets) in enumerate(pbar):
+            if step >= max_steps_per_epoch:
+                break  # Move to next epoch after max_steps_per_epoch
+                
             images, targets = images.to(device), targets.to(device)
 
             optimizer.zero_grad()
@@ -73,6 +79,7 @@ def main():
         epoch_loss = running_loss / len(train_loader)
         print(f"\nEpoch {epoch+1} Complete. Average Loss: {epoch_loss:.4f}")
 
+    
         # Save checkpoint after every epoch if loss improves
         if epoch_loss < best_loss:
             best_loss = epoch_loss
