@@ -4,8 +4,13 @@ import torch
 import timm
 from tqdm import tqdm
 
-from src.dataset import get_dataloaders
 from src.losses import SeesawLoss
+
+# Use this line when testing with 0 GB download on Colab:
+from src.dataset_test import get_dataloaders
+
+# Switch back to this line when running the full dataset:
+# from src.dataset import get_dataloaders
 
 
 def parse_args():
