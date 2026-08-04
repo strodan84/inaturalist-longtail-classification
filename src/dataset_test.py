@@ -1,51 +1,6 @@
-import pandas as pd
-import urllib.request
-from io import BytesIO
 from typing import Tuple, List
-
 import torch
-from torch.utils.data import IterableDataset, DataLoader
-from torchvision import transforms
-from PIL import Image
-
-
-class WebStreamINatDataset(IterableDataset):
-    """
-    Streams iNaturalist images directly into memory using CSV image links.
-    """
-    def __init__(self, csv_url: str, transform=None, max_samples: int = 5000):
-        super().__init__()
-        self.transform = transform
-        self.max_samples = max_samples
-
-        print(f"--> Fetching metadata from CSV ({csv_url})...")
-        # Load small CSV containing image URLs and labels
-        df = pd.read_csv(csv_url, nrows=max_samples)
-        
-        # Expecting columns 'image_url' and 'category_id' (or 'target')
-        url_col = 'image_url' if 'image_url' in df.columns else df.columns[0]
-        label_col = 'category_id' if 'category_id' in df.columns else df.columns[1]
-
-        self.samples = list(zip(df[url_col], df[label_col]))
-
-    def __iter__(self):
-        # User-Agent header prevents HTTP 403 Forbidden on image hosts
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-
-        for url, category_id in self.samples:
-            try:
-                req = urllib.request.Request(url, headers=headers)
-                with urllib.request.urlopen(req, timeout=5) as response:
-                    img_bytes = response.read()
-                    image = Image.open(BytesIO(img_bytes)).convert("RGB")
-
-                if self.transform:
-                    image = self.transform(image)
-
-                yield image, int(category_id)
-            except Exception:
-                # Silently skip any missing or slow images
-                continue
+from torch.utils.data import TensorDataset, DataLoader
 
 
 def get_dataloaders(
@@ -54,33 +9,39 @@ def get_dataloaders(
     img_size: int = 224,
     num_workers: int = 0
 ) -> Tuple[DataLoader, DataLoader, List[int]]:
+    """
+    Generates a fast synthetic dataset in RAM for pipeline debugging.
+    Consumes 0 MB disk and makes 0 web requests.
+    """
+    print("--> Generating Fast Synthetic Dataset (0 MB disk, Instant Load)...")
     
-    train_transform = transforms.Compose([
-        transforms.RandomResizedCrop(img_size),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    val_transform = transforms.Compose([
-        transforms.Resize(int(img_size * 1.14)),
-        transforms.CenterCrop(img_size),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-    ])
-
-    # Direct links to lightweight iNaturalist 2021 sampled CSV metadata
-    train_csv_url = "https://raw.githubusercontent.com/visipedia/inat_comp/master/2021/train_mini.csv"
-    val_csv_url = "https://raw.githubusercontent.com/visipedia/inat_comp/master/2021/val.csv"
-
-    train_dataset = WebStreamINatDataset(train_csv_url, transform=train_transform, max_samples=10000)
-    val_dataset = WebStreamINatDataset(val_csv_url, transform=val_transform, max_samples=1000)
-
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
-
+    num_train_samples = 2500
+    num_val_samples = 500
     num_classes = 10000
-    cls_num_list = [50] * num_classes
 
-    print("✅ Web-Streaming DataLoaders Initialized! Disk space used: ~0 MB.")
+    # Synthetic RGB images matching ResNet input dimensions (N, C, H, W)
+    x_train = torch.randn(num_train_samples, 3, img_size, img_size)
+    y_train = torch.randint(0, num_classes, (num_train_samples,))
+    
+    x_val = torch.randn(num_val_samples, 3, img_size, img_size)
+    y_val = torch.randint(0, num_classes, (num_val_samples,))
+
+    train_loader = DataLoader(
+        TensorDataset(x_train, y_train), 
+        batch_size=batch_size, 
+        shuffle=True, 
+        num_workers=num_workers
+    )
+    
+    val_loader = DataLoader(
+        TensorDataset(x_val, y_val), 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers
+    )
+
+    # Class frequency distribution vector for SeesawLoss / Long-Tail Loss setup
+    cls_num_list = [10] * num_classes
+
+    print(f"✅ Fast Synthetic DataLoaders Ready! Training on {num_train_samples} samples across {num_classes} classes.")
     return train_loader, val_loader, cls_num_list
