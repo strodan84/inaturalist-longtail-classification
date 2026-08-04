@@ -1,28 +1,8 @@
 from typing import Tuple, List
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Subset
 from torchvision import transforms
-from datasets import load_dataset
-
-
-class HFToPyTorchDataset(Dataset):
-    """Adapts Hugging Face iNaturalist dataset to PyTorch format with transforms."""
-    def __init__(self, hf_ds, transform=None):
-        self.ds = hf_ds
-        self.transform = transform
-
-    def __len__(self):
-        return len(self.ds)
-
-    def __getitem__(self, idx):
-        item = self.ds[idx]
-        image = item["image"].convert("RGB")
-        target = item["label"]  # Integer class index (0 - 9999)
-
-        if self.transform:
-            image = self.transform(image)
-
-        return image, target
+from torchvision.datasets import INaturalist
 
 
 def get_dataloaders(
@@ -30,9 +10,11 @@ def get_dataloaders(
     batch_size: int = 128, 
     img_size: int = 224,
     num_workers: int = 2,
-    train_pct: int = 5  # 5% of train dataset (~25k images, ~1.5 GB)
+    subset_ratio: float = 0.05  # Use 5% of dataset (~25k samples) for fast execution
 ) -> Tuple[DataLoader, DataLoader, List[int]]:
-    
+    """
+    Downloads iNaturalist 2021 and uses a subset to prevent high GPU/CPU compute times.
+    """
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
@@ -47,15 +29,19 @@ def get_dataloaders(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    print(f"--> Loading {train_pct}% slice of iNaturalist 2021 via Hugging Face...")
-    
-    # Load lightweight subsets using the correct dataset hub ID
-    raw_train = load_dataset("timm/inat2021", name="mini", split=f"train[:{train_pct}%]")
-    raw_val = load_dataset("timm/inat2021", name="mini", split="validation[:5%]")
+    print("--> Downloading/Loading iNaturalist 2021 (Mini)...")
+    full_train = INaturalist(root=data_dir, version="2021_train_mini", transform=train_transform, download=True)
+    full_val = INaturalist(root=data_dir, version="2021_valid", transform=val_transform, download=True)
 
-    # Wrap in PyTorch Datasets
-    train_dataset = HFToPyTorchDataset(raw_train, transform=train_transform)
-    val_dataset = HFToPyTorchDataset(raw_val, transform=val_transform)
+    # Subsample indices for fast debugging
+    train_size = int(len(full_train) * subset_ratio)
+    val_size = int(len(full_val) * subset_ratio)
+
+    train_indices = list(range(train_size))
+    val_indices = list(range(val_size))
+
+    train_dataset = Subset(full_train, train_indices)
+    val_dataset = Subset(full_val, val_indices)
 
     train_loader = DataLoader(
         train_dataset, 
@@ -72,13 +58,14 @@ def get_dataloaders(
         pin_memory=torch.cuda.is_available()
     )
 
-    # Compute class frequencies for Seesaw Loss (10,000 classes total)
-    num_classes = 10000
+    # Compute class distribution from full dataset (10,000 classes)
+    num_classes = len(full_train.all_categories) if hasattr(full_train, 'all_categories') else 10000
     cls_num_list = [0] * num_classes
 
-    labels = raw_train["label"]
-    for lbl in labels:
-        cls_num_list[lbl] += 1
+    # Count occurrences in the selected subset
+    for i in train_indices:
+        target_id = full_train.index[i][0]
+        cls_num_list[target_id] += 1
 
-    print(f"✅ DataLoaders Ready! Train samples: {len(train_dataset)}, Val samples: {len(val_dataset)}")
+    print(f"✅ DataLoaders Ready! Training on {train_size} images across {num_classes} categories.")
     return train_loader, val_loader, cls_num_list
