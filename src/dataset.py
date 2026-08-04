@@ -55,8 +55,8 @@ def get_dataloaders(
     print(f"--> Loading {train_pct}% slice of iNaturalist 2021_mini from Hugging Face...")
     
     # Load lightweight subsets
-    raw_train = load_dataset("inaturalist/2021_mini", split=f"train[:{train_pct}%]")
-    raw_val = load_dataset("inaturalist/2021_mini", split="validation[:5%]")
+    raw_train = load_dataset("inaturalist/inat2021", split=f"train[:{train_pct}%]")
+    raw_val = load_dataset("inaturalist/inat2021", split="validation[:5%]")
 
     # Wrap in PyTorch Datasets
     train_dataset = HFToPyTorchDataset(raw_train, transform=train_transform)
