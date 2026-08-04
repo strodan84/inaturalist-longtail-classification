@@ -1,4 +1,4 @@
-import json
+import pandas as pd
 import urllib.request
 from io import BytesIO
 from typing import Tuple, List
@@ -11,37 +11,40 @@ from PIL import Image
 
 class WebStreamINatDataset(IterableDataset):
     """
-    Downloads image URLs directly from iNaturalist JSON annotations
-    and fetches images dynamically into RAM during training.
+    Streams iNaturalist images directly into memory using CSV image links.
     """
-    def __init__(self, annotation_url: str, transform=None, max_samples: int = 5000):
+    def __init__(self, csv_url: str, transform=None, max_samples: int = 5000):
         super().__init__()
         self.transform = transform
         self.max_samples = max_samples
 
-        print("--> Fetching iNaturalist JSON metadata...")
-        req = urllib.request.urlopen(annotation_url)
-        data = json.loads(req.read().decode('utf-8'))
+        print(f"--> Fetching metadata from CSV ({csv_url})...")
+        # Load small CSV containing image URLs and labels
+        df = pd.read_csv(csv_url, nrows=max_samples)
+        
+        # Expecting columns 'image_url' and 'category_id' (or 'target')
+        url_col = 'image_url' if 'image_url' in df.columns else df.columns[0]
+        label_col = 'category_id' if 'category_id' in df.columns else df.columns[1]
 
-        # Map image ID to category ID
-        self.samples = []
-        for ann in data['annotations'][:max_samples]:
-            img_info = next((img for img in data['images'] if img['id'] == ann['image_id']), None)
-            if img_info:
-                self.samples.append((img_info['coco_url'], ann['category_id']))
+        self.samples = list(zip(df[url_col], df[label_col]))
 
     def __iter__(self):
+        # User-Agent header prevents HTTP 403 Forbidden on image hosts
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+
         for url, category_id in self.samples:
             try:
-                with urllib.request.urlopen(url, timeout=5) as response:
+                req = urllib.request.Request(url, headers=headers)
+                with urllib.request.urlopen(req, timeout=5) as response:
                     img_bytes = response.read()
                     image = Image.open(BytesIO(img_bytes)).convert("RGB")
 
                 if self.transform:
                     image = self.transform(image)
 
-                yield image, category_id
+                yield image, int(category_id)
             except Exception:
+                # Silently skip any missing or slow images
                 continue
 
 
@@ -66,11 +69,12 @@ def get_dataloaders(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    train_json_url = "https://inaturalist-open-data.s3.amazonaws.com/metadata/2021_train_mini.json"
-    val_json_url = "https://inaturalist-open-data.s3.amazonaws.com/metadata/2021_val.json"
+    # Direct links to lightweight iNaturalist 2021 sampled CSV metadata
+    train_csv_url = "https://raw.githubusercontent.com/visipedia/inat_comp/master/2021/train_mini.csv"
+    val_csv_url = "https://raw.githubusercontent.com/visipedia/inat_comp/master/2021/val.csv"
 
-    train_dataset = WebStreamINatDataset(train_json_url, transform=train_transform, max_samples=25000)
-    val_dataset = WebStreamINatDataset(val_json_url, transform=val_transform, max_samples=2500)
+    train_dataset = WebStreamINatDataset(train_csv_url, transform=train_transform, max_samples=10000)
+    val_dataset = WebStreamINatDataset(val_csv_url, transform=val_transform, max_samples=1000)
 
     train_loader = DataLoader(train_dataset, batch_size=batch_size, num_workers=num_workers)
     val_loader = DataLoader(val_dataset, batch_size=batch_size, num_workers=num_workers)
