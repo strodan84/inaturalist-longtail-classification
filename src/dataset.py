@@ -6,9 +6,7 @@ from datasets import load_dataset
 
 
 class HFToPyTorchDataset(Dataset):
-    """
-    Adapts Hugging Face iNaturalist dataset to PyTorch format with transforms.
-    """
+    """Adapts Hugging Face iNaturalist dataset to PyTorch format with transforms."""
     def __init__(self, hf_ds, transform=None):
         self.ds = hf_ds
         self.transform = transform
@@ -32,12 +30,9 @@ def get_dataloaders(
     batch_size: int = 128, 
     img_size: int = 224,
     num_workers: int = 2,
-    train_pct: int = 5  # Percentage of train dataset to download (e.g., 5% = ~25k images)
+    train_pct: int = 5  # 5% of train dataset (~25k images, ~1.5 GB)
 ) -> Tuple[DataLoader, DataLoader, List[int]]:
-    """
-    Streams a fast, lightweight subset of iNaturalist 2021 via Hugging Face.
-    Prevents large 44GB+ tarball downloads and disk crashes.
-    """
+    
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(img_size),
         transforms.RandomHorizontalFlip(),
@@ -52,11 +47,11 @@ def get_dataloaders(
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
     ])
 
-    print(f"--> Loading {train_pct}% slice of iNaturalist 2021_mini from Hugging Face...")
+    print(f"--> Loading {train_pct}% slice of iNaturalist 2021 via Hugging Face...")
     
-    # Load lightweight subsets
-    raw_train = load_dataset("inaturalist/inat2021", split=f"train[:{train_pct}%]")
-    raw_val = load_dataset("inaturalist/inat2021", split="validation[:5%]")
+    # Load lightweight subsets using the correct dataset hub ID
+    raw_train = load_dataset("inaturalist/inat2021", name="mini", split=f"train[:{train_pct}%]")
+    raw_val = load_dataset("inaturalist/inat2021", name="mini", split="validation[:5%]")
 
     # Wrap in PyTorch Datasets
     train_dataset = HFToPyTorchDataset(raw_train, transform=train_transform)
@@ -77,11 +72,10 @@ def get_dataloaders(
         pin_memory=torch.cuda.is_available()
     )
 
-    # Compute class frequencies for Seesaw Loss (10,000 total classes in 2021)
+    # Compute class frequencies for Seesaw Loss (10,000 classes total)
     num_classes = 10000
     cls_num_list = [0] * num_classes
 
-    # Count occurrences in the sampled subset
     labels = raw_train["label"]
     for lbl in labels:
         cls_num_list[lbl] += 1
